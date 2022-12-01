@@ -1,0 +1,19 @@
+name: 'Publish Tag'
+description: 'Gets the Latest Semantic Version By Repository Tag Name'
+inputs:
+  GITHUB_TOKEN:
+    description: 'github token'
+    required: true
+  tag_label:
+    description: 'label for tag'
+    required: true
+  tag_message:
+    description: 'message for this tage'
+    required: true
+  target_branch:
+    description: 'this branch HEAD will be used as the target for the new ref'
+    required: true
+    default: main
+runs:
+  using: 'node16'
+  main: 'index.js'

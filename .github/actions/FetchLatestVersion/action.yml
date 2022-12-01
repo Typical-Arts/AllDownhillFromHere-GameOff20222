@@ -1,0 +1,12 @@
+name: 'Get Latest Version'
+description: 'Gets the Latest Semantic Version By Repository Tag Name'
+inputs:
+  GITHUB_TOKEN:
+    description: 'github token'
+    required: true
+outputs:
+  latest_version: # id of output
+    description: 'latest tag by semantic version'
+runs:
+  using: 'node16'
+  main: 'index.js'

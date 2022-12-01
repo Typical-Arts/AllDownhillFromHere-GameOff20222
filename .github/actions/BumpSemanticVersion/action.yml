@@ -1,0 +1,16 @@
+name: 'Bump Semntic Version'
+description: 'Produces the next semantic version given current version and bump type'
+inputs:
+  current_version:
+    description: 'The current semantic version'
+    required: true
+  bump_type:
+    description: 'MAJOR, MINOR, PATCH'
+    required: true
+    default: MINOR
+outputs:
+  new_version: # id of output
+    description: 'new version produced by bump'
+runs:
+  using: 'node16'
+  main: 'index.js'

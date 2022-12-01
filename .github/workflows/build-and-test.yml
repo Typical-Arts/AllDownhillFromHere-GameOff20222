@@ -1,0 +1,197 @@
+name: UNITY_PROJECT_CI
+permissions: write-all
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  Project_Test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      # Git LFS
+      - name: Create LFS file list
+        id: lfs
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v2
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Git LFS Pull
+        id: lfs_pull
+        run: |
+          git lfs pull
+          git add .
+          git reset --hard
+
+      # Cache
+      - uses: actions/cache@v2
+        id: cache
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      # Test
+      - name: Run tests
+        id: run_test
+        uses: game-ci/unity-test-runner@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+  Project_Build:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      # Git LFS
+      - name: Create LFS file list
+        id: lfs
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v2
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Git LFS Pull
+        id: lfs_pull
+        run: |
+          git lfs pull
+          git add .
+          git reset --hard
+
+      # Cache
+      - uses: actions/cache@v2
+        id: cache
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      # Build
+      - name: Build project
+        id: build
+        uses: game-ci/unity-builder@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneWindows64
+
+  Bump_Version_And_Publish:
+    needs: [Project_Test, Project_Build]
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v2
+
+      # Git LFS
+      - name: Create LFS file list
+        id: lfs
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v2
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Git LFS Pull
+        id: lfs_pull
+        run: |
+          git lfs pull
+          git add .
+          git reset --hard
+
+      # Cache
+      - uses: actions/cache@v2
+        id: cache
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      # Fetch latest semantic tag
+      - name: Fetch Latest Semantic Tag
+        id: fetch_tag
+        uses: ./.github/actions/FetchLatestVersion
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Bump Tag
+      - name: Bump Tag To Next Version
+        id: bump_tag
+        uses: ./.github/actions/BumpSemanticVersion
+        with:
+          current_version: ${{ steps.fetch_tag.outputs.latest_version }}
+
+      # Build
+      - name: Build project
+        id: build
+        uses: game-ci/unity-builder@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneWindows64
+          buildName: All Downhill From Here
+          buildsPath: All Downhill From Here
+          versioning: Custom
+          version:
+            ${{ steps.bump_tag.outputs.new_version }}
+
+      # Authenticate Google Cloud
+      - id: "auth"
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v0"
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_ID_PROVIDER }}
+          service_account: ${{ secrets.GCS_SERVICE_ACCOUNT }}
+
+      # Upload build assets to GCS
+      - id: "upload-file"
+        name: Publish Build To GCS
+        if: github.ref_name == 'main'
+        uses: "google-github-actions/upload-cloud-storage@v0"
+        with:
+          path: All Downhill From Here
+          destination: all_downhill_from_here/${{ steps.bump_tag.outputs.new_version }}/${{ github.event_name }}_${{ github.run_id }}
+
+      # Publish Tag
+      - name: Publish Tag
+        id: publish_tag
+        uses: ./.github/actions/PublishTag
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_label: ${{ steps.bump_tag.outputs.new_version }}
+          tag_message: "Bumping Version"
